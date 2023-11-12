@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Demo</title>
+</head>
+
+<body>
+  <h1>Demo</h1>
+  <p>
+    Status: <span>DISCONNECTED</span>
+  </p>
+  <h2>Events</h2>
+  <ul>
+
+  </ul>
+</body>
+
+<script>
+  const status = document.querySelector('span');
+  const list = document.querySelector('ul');
+
+  const source = new EventSource('/topics/demo/sse');
+
+  source.addEventListener('open', () => {
+    status.textContent = 'CONNECTED';
+  })
+
+  source.addEventListener('message', (event) => {
+    const li = document.createElement('li');
+    li.textContent = event.data;
+    list.appendChild(li);
+  })
+
+  source.addEventListener('error', () => {
+    status.textContent = 'DISCONNECTED';
+  })
+
+  function delay(ms) {
+    return new Promise((resolve) => {
+      setTimeout(resolve, ms);
+    });
+  }
+
+  async function sendMessage() {
+    while (true) {
+      await fetch('/topics/demo', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          value: 'Hello, world!',
+        })
+      })
+
+      await delay(1_000);
+    }
+  }
+
+  sendMessage();
+</script>
+
+</html>
