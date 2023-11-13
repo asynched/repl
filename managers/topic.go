@@ -1,17 +1,31 @@
 package managers
 
 import (
+	"encoding/json"
 	"errors"
+	"io"
+	"log"
 	"sync"
 	"time"
 
 	"github.com/asynched/repl/channels"
 	"github.com/asynched/repl/domain/entities"
+	"github.com/hashicorp/raft"
 )
 
 var (
-	ErrTopicNotFound error = errors.New("topic not found")
+	ErrTopicNotFound      error = errors.New("topic not found")
+	ErrTopicAlreadyExists error = errors.New("topic already exists")
 )
+
+type TopicManager interface {
+	CreateTopic(name string) error
+	Exists(topicName string) bool
+	GetTopics() []string
+	PublishMessage(topicName string, message *entities.Message) error
+	Subscribe(topicName string) (chan *entities.Message, error)
+	Unsubscribe(topicName string, listener chan *entities.Message)
+}
 
 // Topic data structure that contains it's name and a channel for broadcasting messages.
 type Topic struct {
@@ -24,13 +38,11 @@ func (topic *Topic) publish(message *entities.Message) {
 	topic.Broadcast.Broadcast(message)
 }
 
-type TopicManager interface {
-	CreateTopic(name string) bool
-	Exists(topicName string) bool
-	GetTopics() []string
-	PublishMessage(topicName string, message *entities.Message) error
-	Subscribe(topicName string) (chan *entities.Message, error)
-	Unsubscribe(topicName string, listener chan *entities.Message)
+func NewTopic(name string) *Topic {
+	return &Topic{
+		Name:      name,
+		Broadcast: channels.NewBroadcast[*entities.Message](time.Second * 1),
+	}
 }
 
 // StandaloneTopicManager is a manager for topics inside the application.
@@ -69,20 +81,17 @@ func (manager *StandaloneTopicManager) GetTopics() []string {
 
 // CreateTopic tries to create a new topic and returns true
 // if the topic was created successfully.
-func (manager *StandaloneTopicManager) CreateTopic(name string) bool {
+func (manager *StandaloneTopicManager) CreateTopic(name string) error {
 	manager.lock.Lock()
 	defer manager.lock.Unlock()
 
 	if _, ok := manager.topics[name]; ok {
-		return false
+		return ErrTopicAlreadyExists
 	}
 
-	manager.topics[name] = &Topic{
-		Name:      name,
-		Broadcast: channels.NewBroadcast[*entities.Message](time.Second * 1),
-	}
+	manager.topics[name] = NewTopic(name)
 
-	return true
+	return nil
 }
 
 // PublishMessage publishes a message to a topic.
@@ -138,9 +147,195 @@ func (manager *StandaloneTopicManager) Unsubscribe(topicName string, listener ch
 }
 
 // NewStandaloneTopicManager creates a new topic manager.
-func NewStandaloneTopicManager() TopicManager {
+func NewStandaloneTopicManager() *StandaloneTopicManager {
 	return &StandaloneTopicManager{
 		lock:   sync.RWMutex{},
 		topics: make(map[string]*Topic),
 	}
+}
+
+type RaftTopicManager struct {
+	raft   *raft.Raft
+	lock   sync.RWMutex
+	topics map[string]*Topic
+}
+
+func NewRaftTopicManager() *RaftTopicManager {
+	return &RaftTopicManager{
+		lock:   sync.RWMutex{},
+		topics: make(map[string]*Topic),
+	}
+}
+
+func (manager *RaftTopicManager) Configure(raft *raft.Raft) {
+	manager.raft = raft
+}
+
+func (manager *RaftTopicManager) CreateTopic(name string) error {
+	cmd := &raftCreateTopicCommand{
+		Kind: raftCommandKindCreateTopic,
+		Name: name,
+	}
+
+	data, err := json.Marshal(cmd)
+
+	if err != nil {
+		return err
+	}
+
+	f := manager.raft.Apply(data, 5*time.Second)
+
+	return f.Error()
+}
+
+func (manager *RaftTopicManager) Exists(topicName string) bool {
+	manager.lock.RLock()
+	defer manager.lock.RUnlock()
+
+	_, ok := manager.topics[topicName]
+
+	return ok
+}
+
+func (manager *RaftTopicManager) GetTopics() []string {
+	manager.lock.RLock()
+	defer manager.lock.RUnlock()
+
+	names := make([]string, 0)
+
+	for name := range manager.topics {
+		names = append(names, name)
+	}
+
+	return names
+}
+
+func (manager *RaftTopicManager) PublishMessage(topicName string, message *entities.Message) error {
+	manager.lock.RLock()
+	defer manager.lock.RUnlock()
+
+	_, ok := manager.topics[topicName]
+
+	if !ok {
+		return ErrTopicNotFound
+	}
+
+	message.FillMissingFields()
+
+	cmd := &raftPublishMessageCommand{
+		Kind:    raftCommandKindPublishMessage,
+		Topic:   topicName,
+		Message: *message,
+	}
+
+	data, err := json.Marshal(cmd)
+
+	if err != nil {
+		return err
+	}
+
+	f := manager.raft.Apply(data, 5*time.Second)
+
+	return f.Error()
+}
+
+func (manager *RaftTopicManager) Subscribe(topicName string) (chan *entities.Message, error) {
+	manager.lock.RLock()
+	defer manager.lock.RUnlock()
+
+	topic, ok := manager.topics[topicName]
+
+	if !ok {
+		return nil, ErrTopicNotFound
+	}
+
+	listener := make(chan *entities.Message)
+
+	topic.Broadcast.AddListener(listener)
+
+	return listener, nil
+}
+
+func (manager *RaftTopicManager) Unsubscribe(topicName string, listener chan *entities.Message) {
+	manager.lock.RLock()
+	defer manager.lock.RUnlock()
+
+	topic, ok := manager.topics[topicName]
+
+	if !ok {
+		return
+	}
+
+	topic.Broadcast.RemoveListener(listener)
+}
+
+type raftCommandKind int
+
+const (
+	raftCommandKindCreateTopic    raftCommandKind = 1
+	raftCommandKindPublishMessage raftCommandKind = 2
+)
+
+type raftCommand struct {
+	Kind raftCommandKind `json:"kind"`
+}
+
+type raftCreateTopicCommand struct {
+	Kind raftCommandKind `json:"kind"`
+	Name string          `json:"name"`
+}
+
+type raftPublishMessageCommand struct {
+	Kind    raftCommandKind  `json:"kind"`
+	Topic   string           `json:"topic"`
+	Message entities.Message `json:"message"`
+}
+
+func (manager *RaftTopicManager) Apply(l *raft.Log) interface{} {
+	command := &raftCommand{}
+
+	if err := json.Unmarshal(l.Data, command); err != nil {
+		log.Fatalf("failed to parse raft command: %s", err)
+	}
+
+	switch command.Kind {
+	case raftCommandKindCreateTopic:
+		manager.lock.Lock()
+		defer manager.lock.Unlock()
+
+		createTopicCommand := &raftCreateTopicCommand{}
+
+		if err := json.Unmarshal(l.Data, createTopicCommand); err != nil {
+			log.Fatalf("failed to parse raft command: %s", err)
+		}
+
+		manager.topics[createTopicCommand.Name] = NewTopic(createTopicCommand.Name)
+		return nil
+	case raftCommandKindPublishMessage:
+		publishMessageCommand := &raftPublishMessageCommand{}
+
+		if err := json.Unmarshal(l.Data, publishMessageCommand); err != nil {
+			log.Fatalf("failed to parse raft command: %s", err)
+		}
+
+		topic, ok := manager.topics[publishMessageCommand.Topic]
+
+		if !ok {
+			log.Fatalf("topic not found: %s", publishMessageCommand.Topic)
+		}
+
+		topic.publish(&publishMessageCommand.Message)
+	default:
+		log.Fatalf("unknown raft command kind: %d", command.Kind)
+	}
+
+	return nil
+}
+
+func (manager *RaftTopicManager) Snapshot() (raft.FSMSnapshot, error) {
+	return nil, nil
+}
+
+func (manager *RaftTopicManager) Restore(rc io.ReadCloser) error {
+	return nil
 }

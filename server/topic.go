@@ -32,14 +32,15 @@ func (controller *TopicController) HandleCreateTopic(c *fiber.Ctx) error {
 		})
 	}
 
-	if controller.manager.CreateTopic(data.Name) {
-		return c.Status(fiber.StatusCreated).JSON(fiber.Map{
-			"message": "topic created",
+	if err := controller.manager.CreateTopic(data.Name); err != nil {
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{
+			"error": "topic already exists",
+			"cause": err.Error(),
 		})
 	}
 
-	return c.Status(fiber.StatusConflict).JSON(fiber.Map{
-		"error": "topic already exists",
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
+		"message": "topic created",
 	})
 }
 
@@ -122,17 +123,31 @@ func (controller *TopicController) HandleSSE(c *fiber.Ctx) error {
 			case message := <-channel:
 				data, _ := json.Marshal(message)
 
-				if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
+				sent, err := fmt.Fprintf(w, "data: %s\n\n", data)
+
+				if err != nil {
+					return
+				}
+
+				if sent == 0 {
 					return
 				}
 
 				if err := w.Flush(); err != nil {
 					return
 				}
-			case <-time.After(10 * time.Second):
-				log.Printf("Sending ping event to '%s' (10s timeout)\n", clientAddress)
+			case <-time.After(5 * time.Second):
+				log.Printf("Sending ping event to '%s' (5s timeout)\n", clientAddress)
 
-				if _, err := fmt.Fprint(w, "event: ping\n\n"); err != nil {
+				sent, err := fmt.Fprint(w, "event: ping\n\n")
+
+				log.Printf("Sent=%d\tError=%v\n", sent, err)
+
+				if err != nil {
+					return
+				}
+
+				if sent == 0 {
 					return
 				}
 

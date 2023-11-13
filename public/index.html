@@ -22,21 +22,43 @@
   const status = document.querySelector('span');
   const list = document.querySelector('ul');
 
-  const source = new EventSource('/topics/demo/sse');
+  async function main() {
+    const response = await fetch('/topics', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: 'demo',
+      })
+    })
 
-  source.addEventListener('open', () => {
-    status.textContent = 'CONNECTED';
-  })
+    if (response.status !== 201) {
+      console.error('Failed to create topic');
+    }
 
-  source.addEventListener('message', (event) => {
-    const li = document.createElement('li');
-    li.textContent = event.data;
-    list.appendChild(li);
-  })
+    initializeEventSource();
+    sendMessages()
+  }
 
-  source.addEventListener('error', () => {
-    status.textContent = 'DISCONNECTED';
-  })
+  function initializeEventSource() {
+    const source = new EventSource('/topics/demo/sse');
+
+    source.addEventListener('open', () => {
+      status.textContent = 'CONNECTED';
+    })
+
+    source.addEventListener('message', (event) => {
+      const li = document.createElement('li');
+      li.textContent = event.data;
+      list.appendChild(li);
+    })
+
+    source.addEventListener('error', () => {
+      status.textContent = 'DISCONNECTED';
+    })
+  }
+
 
   function delay(ms) {
     return new Promise((resolve) => {
@@ -44,7 +66,7 @@
     });
   }
 
-  async function sendMessage() {
+  async function sendMessages() {
     while (true) {
       await fetch('/topics/demo', {
         method: 'POST',
@@ -60,7 +82,7 @@
     }
   }
 
-  sendMessage();
+  main()
 </script>
 
 </html>

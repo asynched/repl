@@ -1,0 +1,4 @@
+name = "hermes"
+http_addr = "127.0.0.1:9080"
+raft_addr = "127.0.0.1:9081"
+cluster = true

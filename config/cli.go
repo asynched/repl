@@ -7,10 +7,17 @@ import (
 )
 
 type Config struct {
+	Name      string `toml:"name"`
 	HttpAddr  string `toml:"http_addr"`
 	RaftAddr  string `toml:"raft_addr"`
 	Cluster   bool   `toml:"cluster"`
 	Bootstrap bool   `toml:"bootstrap"`
+	Peers     []Peer `toml:"peers"`
+}
+
+type Peer struct {
+	HttpAddr string `toml:"http_addr"`
+	RaftAddr string `toml:"raft_addr"`
 }
 
 func (config *Config) Validate() error {
@@ -20,6 +27,14 @@ func (config *Config) Validate() error {
 
 	if config.Cluster && config.RaftAddr == "" {
 		return errors.New("raft_addr is required")
+	}
+
+	if config.Bootstrap && len(config.Peers) == 0 {
+		return errors.New("peers are required")
+	}
+
+	if !config.Bootstrap && len(config.Peers) > 0 {
+		return errors.New("peers are not allowed")
 	}
 
 	return nil

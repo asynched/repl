@@ -1,0 +1,9 @@
+name = "apollo"
+http_addr = "127.0.0.1:9000"
+cluster = true
+bootstrap = true
+raft_addr = "127.0.0.1:9001"
+
+[[peers]]
+http_addr = "127.0.0.1:9080"
+raft_addr = "127.0.0.1:9081"
