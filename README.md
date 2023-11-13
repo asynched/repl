@@ -1,3 +1,3 @@
 # repl
 
-Who knows. ¯\\\_(ツ)\_/¯
+A distributed messaging service for realtime web applications.
