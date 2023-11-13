@@ -59,17 +59,14 @@ func (controller *TopicController) HandlePublishMessage(c *fiber.Ctx) error {
 		})
 	}
 
-	message := &entities.Message{
+	message := entities.Message{
 		Value:   data.Value,
 		Headers: data.Headers,
 	}
 
-	if err := controller.manager.PublishMessage(topicName, message); err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "failed to publish message",
-			"cause": err.Error(),
-		})
-	}
+	message.FillMissingFields()
+
+	go controller.manager.PublishMessage(topicName, message)
 
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 		"message": "message published",
@@ -123,13 +120,7 @@ func (controller *TopicController) HandleSSE(c *fiber.Ctx) error {
 			case message := <-channel:
 				data, _ := json.Marshal(message)
 
-				sent, err := fmt.Fprintf(w, "data: %s\n\n", data)
-
-				if err != nil {
-					return
-				}
-
-				if sent == 0 {
+				if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
 					return
 				}
 
@@ -139,15 +130,7 @@ func (controller *TopicController) HandleSSE(c *fiber.Ctx) error {
 			case <-time.After(5 * time.Second):
 				log.Printf("Sending ping event to '%s' (5s timeout)\n", clientAddress)
 
-				sent, err := fmt.Fprint(w, "event: ping\n\n")
-
-				log.Printf("Sent=%d\tError=%v\n", sent, err)
-
-				if err != nil {
-					return
-				}
-
-				if sent == 0 {
+				if _, err := fmt.Fprint(w, "event: ping\n\n"); err != nil {
 					return
 				}
 

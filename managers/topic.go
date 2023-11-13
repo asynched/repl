@@ -23,26 +23,26 @@ type TopicManager interface {
 	CreateTopic(name string) error
 	Exists(topicName string) bool
 	GetTopics() []string
-	PublishMessage(topicName string, message *entities.Message) error
-	Subscribe(topicName string) (chan *entities.Message, error)
-	Unsubscribe(topicName string, listener chan *entities.Message)
+	PublishMessage(topicName string, message entities.Message) error
+	Subscribe(topicName string) (chan entities.Message, error)
+	Unsubscribe(topicName string, listener chan entities.Message)
 }
 
 // Topic data structure that contains it's name and a channel for broadcasting messages.
 type Topic struct {
 	Name      string
-	Broadcast *channels.Broadcast[*entities.Message]
+	Broadcast *channels.Broadcast[entities.Message]
 }
 
 // publish publishes a message to the topic.
-func (topic *Topic) publish(message *entities.Message) {
+func (topic *Topic) publish(message entities.Message) {
 	topic.Broadcast.Broadcast(message)
 }
 
 func NewTopic(name string) *Topic {
 	return &Topic{
 		Name:      name,
-		Broadcast: channels.NewBroadcast[*entities.Message](time.Second * 1),
+		Broadcast: channels.NewBroadcast[entities.Message](time.Second * 1),
 	}
 }
 
@@ -97,7 +97,7 @@ func (manager *StandaloneTopicManager) CreateTopic(name string) error {
 
 // PublishMessage publishes a message to a topic.
 // Returns an error if the topic does not exist.
-func (manager *StandaloneTopicManager) PublishMessage(topicName string, message *entities.Message) error {
+func (manager *StandaloneTopicManager) PublishMessage(topicName string, message entities.Message) error {
 	manager.lock.RLock()
 	defer manager.lock.RUnlock()
 
@@ -116,7 +116,7 @@ func (manager *StandaloneTopicManager) PublishMessage(topicName string, message 
 
 // Subscribe subscribes to a topic.
 // Returns a channel that will receive messages from the topic or an error if the topic does not exist.
-func (manager *StandaloneTopicManager) Subscribe(topicName string) (chan *entities.Message, error) {
+func (manager *StandaloneTopicManager) Subscribe(topicName string) (chan entities.Message, error) {
 	manager.lock.RLock()
 	defer manager.lock.RUnlock()
 
@@ -126,7 +126,7 @@ func (manager *StandaloneTopicManager) Subscribe(topicName string) (chan *entiti
 		return nil, ErrTopicNotFound
 	}
 
-	listener := make(chan *entities.Message)
+	listener := make(chan entities.Message)
 
 	topic.Broadcast.AddListener(listener)
 
@@ -134,7 +134,7 @@ func (manager *StandaloneTopicManager) Subscribe(topicName string) (chan *entiti
 }
 
 // Unsubscribe unsubscribes from a topic.
-func (manager *StandaloneTopicManager) Unsubscribe(topicName string, listener chan *entities.Message) {
+func (manager *StandaloneTopicManager) Unsubscribe(topicName string, listener chan entities.Message) {
 	manager.lock.RLock()
 	defer manager.lock.RUnlock()
 
@@ -211,7 +211,7 @@ func (manager *RaftTopicManager) GetTopics() []string {
 	return names
 }
 
-func (manager *RaftTopicManager) PublishMessage(topicName string, message *entities.Message) error {
+func (manager *RaftTopicManager) PublishMessage(topicName string, message entities.Message) error {
 	manager.lock.RLock()
 	defer manager.lock.RUnlock()
 
@@ -226,7 +226,7 @@ func (manager *RaftTopicManager) PublishMessage(topicName string, message *entit
 	cmd := &raftPublishMessageCommand{
 		Kind:    raftCommandKindPublishMessage,
 		Topic:   topicName,
-		Message: *message,
+		Message: message,
 	}
 
 	data, err := json.Marshal(cmd)
@@ -240,7 +240,7 @@ func (manager *RaftTopicManager) PublishMessage(topicName string, message *entit
 	return f.Error()
 }
 
-func (manager *RaftTopicManager) Subscribe(topicName string) (chan *entities.Message, error) {
+func (manager *RaftTopicManager) Subscribe(topicName string) (chan entities.Message, error) {
 	manager.lock.RLock()
 	defer manager.lock.RUnlock()
 
@@ -250,14 +250,14 @@ func (manager *RaftTopicManager) Subscribe(topicName string) (chan *entities.Mes
 		return nil, ErrTopicNotFound
 	}
 
-	listener := make(chan *entities.Message)
+	listener := make(chan entities.Message)
 
 	topic.Broadcast.AddListener(listener)
 
 	return listener, nil
 }
 
-func (manager *RaftTopicManager) Unsubscribe(topicName string, listener chan *entities.Message) {
+func (manager *RaftTopicManager) Unsubscribe(topicName string, listener chan entities.Message) {
 	manager.lock.RLock()
 	defer manager.lock.RUnlock()
 
@@ -325,7 +325,7 @@ func (manager *RaftTopicManager) Apply(l *raft.Log) interface{} {
 			log.Fatalf("topic not found: %s", publishMessageCommand.Topic)
 		}
 
-		topic.publish(&publishMessageCommand.Message)
+		topic.publish(publishMessageCommand.Message)
 	default:
 		log.Fatalf("unknown raft command kind: %d", command.Kind)
 	}
