@@ -1,6 +1,7 @@
 package managers
 
 import (
+	"encoding/gob"
 	"encoding/json"
 	"errors"
 	"io"
@@ -332,10 +333,54 @@ func (manager *RaftTopicManager) Apply(l *raft.Log) interface{} {
 	return nil
 }
 
+type topicManagerSnapshot struct {
+	Topics map[string]string
+}
+
+func (snapshot *topicManagerSnapshot) Persist(sink raft.SnapshotSink) error {
+	encoder := gob.NewEncoder(sink)
+
+	if err := encoder.Encode(snapshot); err != nil {
+		return err
+	}
+
+	if err := sink.Close(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (snapshot *topicManagerSnapshot) Release() {}
+
 func (manager *RaftTopicManager) Snapshot() (raft.FSMSnapshot, error) {
-	return nil, nil
+	manager.lock.RLock()
+	defer manager.lock.RUnlock()
+
+	snapshot := &topicManagerSnapshot{
+		Topics: make(map[string]string),
+	}
+
+	for name, topic := range manager.topics {
+		snapshot.Topics[name] = topic.Name
+	}
+
+	return snapshot, nil
 }
 
 func (manager *RaftTopicManager) Restore(rc io.ReadCloser) error {
+	snapshot := &topicManagerSnapshot{}
+
+	if err := gob.NewDecoder(rc).Decode(snapshot); err != nil {
+		return err
+	}
+
+	manager.lock.Lock()
+	defer manager.lock.Unlock()
+
+	for name, topicName := range snapshot.Topics {
+		manager.topics[name] = NewTopic(topicName)
+	}
+
 	return nil
 }

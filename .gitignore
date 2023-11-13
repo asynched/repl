@@ -1,4 +1,8 @@
 data/logs/*
 !data/logs/.gitkeep
+
 data/stable/*
 !data/stable/.gitkeep
+
+data/snapshots/*
+!data/snapshots/.gitkeep

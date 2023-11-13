@@ -103,6 +103,8 @@ func getRaft(config *config.Config, fsm raft.FSM) (*raft.Raft, error) {
 	raftConfig.LocalID = raft.ServerID(config.RaftAddr)
 
 	raftConfig.LogOutput = io.Discard
+	raftConfig.SnapshotInterval = 20 * time.Second
+	raftConfig.SnapshotThreshold = 2
 
 	transport, err := raft.NewTCPTransport(config.RaftAddr, nil, 3, 10*time.Second, nil)
 
@@ -153,9 +155,9 @@ func getRaft(config *config.Config, fsm raft.FSM) (*raft.Raft, error) {
 			Servers: servers,
 		}
 
-		f := r.BootstrapCluster(configuration)
+		future := r.BootstrapCluster(configuration)
 
-		if err := f.Error(); err != nil {
+		if err := future.Error(); err != nil {
 			log.Println("Error bootstrapping cluster, cluster is already bootstrapped")
 		}
 	}
