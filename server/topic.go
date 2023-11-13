@@ -13,7 +13,7 @@ import (
 )
 
 type TopicController struct {
-	manager *managers.TopicManager
+	manager managers.TopicManager
 }
 
 func (controller *TopicController) HandleGetTopics(c *fiber.Ctx) error {
@@ -92,11 +92,11 @@ func (controller *TopicController) HandleSSE(c *fiber.Ctx) error {
 	c.Set("Cache-Control", "no-cache")
 	c.Set("Connection", "keep-alive")
 
-	log.Printf("Client '%s' has subscribed to topic '%s'\n", clientAddress, topicName)
+	log.Printf("'%s' has subscribed to topic '%s'\n", clientAddress, topicName)
 
 	c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
 		defer func() {
-			log.Printf("Client '%s' disconnected from topic '%s'\n", clientAddress, topicName)
+			log.Printf("'%s' disconnected from topic '%s'\n", clientAddress, topicName)
 		}()
 
 		channel, err := controller.manager.Subscribe(topicName)
@@ -130,9 +130,9 @@ func (controller *TopicController) HandleSSE(c *fiber.Ctx) error {
 					return
 				}
 			case <-time.After(10 * time.Second):
-				log.Println("Sending ping event (timeout reached)")
+				log.Printf("Sending ping event to '%s' (10s timeout)\n", clientAddress)
 
-				if _, err := fmt.Fprintf(w, "event: %s\n\n", "ping"); err != nil {
+				if _, err := fmt.Fprint(w, "event: ping\n\n"); err != nil {
 					return
 				}
 
@@ -146,7 +146,14 @@ func (controller *TopicController) HandleSSE(c *fiber.Ctx) error {
 	return nil
 }
 
-func NewTopicController(manager *managers.TopicManager) *TopicController {
+func (controller *TopicController) Setup(router fiber.Router) {
+	router.Get("/", controller.HandleGetTopics)
+	router.Post("/", controller.HandleCreateTopic)
+	router.Post("/:topic", controller.HandlePublishMessage)
+	router.Get("/:topic/sse", controller.HandleSSE)
+}
+
+func NewTopicController(manager managers.TopicManager) *TopicController {
 	return &TopicController{
 		manager: manager,
 	}

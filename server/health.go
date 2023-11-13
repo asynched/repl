@@ -27,6 +27,10 @@ func (controller *HealthController) GetHealth(c *fiber.Ctx) error {
 	})
 }
 
+func (controller *HealthController) Setup(router fiber.Router) {
+	router.Get("/", controller.GetHealth)
+}
+
 func NewHealthController() *HealthController {
 	return &HealthController{
 		startup: time.Now(),

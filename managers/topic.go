@@ -24,8 +24,17 @@ func (topic *Topic) publish(message *entities.Message) {
 	topic.Broadcast.Broadcast(message)
 }
 
-// TopicManager is a manager for topics inside the application.
-type TopicManager struct {
+type TopicManager interface {
+	CreateTopic(name string) bool
+	Exists(topicName string) bool
+	GetTopics() []string
+	PublishMessage(topicName string, message *entities.Message) error
+	Subscribe(topicName string) (chan *entities.Message, error)
+	Unsubscribe(topicName string, listener chan *entities.Message)
+}
+
+// StandaloneTopicManager is a manager for topics inside the application.
+type StandaloneTopicManager struct {
 	lock   sync.RWMutex
 	topics map[string]*Topic
 }
@@ -35,7 +44,7 @@ type TopicManager struct {
 // Example:
 //
 //	manager.Exists("demo") // true
-func (manager *TopicManager) Exists(topicName string) bool {
+func (manager *StandaloneTopicManager) Exists(topicName string) bool {
 	manager.lock.RLock()
 	defer manager.lock.RUnlock()
 
@@ -45,7 +54,7 @@ func (manager *TopicManager) Exists(topicName string) bool {
 }
 
 // GetTopics returns a list of all topics.
-func (manager *TopicManager) GetTopics() []string {
+func (manager *StandaloneTopicManager) GetTopics() []string {
 	manager.lock.RLock()
 	defer manager.lock.RUnlock()
 
@@ -60,7 +69,7 @@ func (manager *TopicManager) GetTopics() []string {
 
 // CreateTopic tries to create a new topic and returns true
 // if the topic was created successfully.
-func (manager *TopicManager) CreateTopic(name string) bool {
+func (manager *StandaloneTopicManager) CreateTopic(name string) bool {
 	manager.lock.Lock()
 	defer manager.lock.Unlock()
 
@@ -78,7 +87,7 @@ func (manager *TopicManager) CreateTopic(name string) bool {
 
 // PublishMessage publishes a message to a topic.
 // Returns an error if the topic does not exist.
-func (manager *TopicManager) PublishMessage(topicName string, message *entities.Message) error {
+func (manager *StandaloneTopicManager) PublishMessage(topicName string, message *entities.Message) error {
 	manager.lock.RLock()
 	defer manager.lock.RUnlock()
 
@@ -97,7 +106,7 @@ func (manager *TopicManager) PublishMessage(topicName string, message *entities.
 
 // Subscribe subscribes to a topic.
 // Returns a channel that will receive messages from the topic or an error if the topic does not exist.
-func (manager *TopicManager) Subscribe(topicName string) (chan *entities.Message, error) {
+func (manager *StandaloneTopicManager) Subscribe(topicName string) (chan *entities.Message, error) {
 	manager.lock.RLock()
 	defer manager.lock.RUnlock()
 
@@ -115,7 +124,7 @@ func (manager *TopicManager) Subscribe(topicName string) (chan *entities.Message
 }
 
 // Unsubscribe unsubscribes from a topic.
-func (manager *TopicManager) Unsubscribe(topicName string, listener chan *entities.Message) {
+func (manager *StandaloneTopicManager) Unsubscribe(topicName string, listener chan *entities.Message) {
 	manager.lock.RLock()
 	defer manager.lock.RUnlock()
 
@@ -128,9 +137,9 @@ func (manager *TopicManager) Unsubscribe(topicName string, listener chan *entiti
 	topic.Broadcast.RemoveListener(listener)
 }
 
-// NewTopicManager creates a new topic manager.
-func NewTopicManager() *TopicManager {
-	return &TopicManager{
+// NewStandaloneTopicManager creates a new topic manager.
+func NewStandaloneTopicManager() TopicManager {
+	return &StandaloneTopicManager{
 		lock:   sync.RWMutex{},
 		topics: make(map[string]*Topic),
 	}

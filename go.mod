@@ -3,6 +3,7 @@ module github.com/asynched/repl
 go 1.21.0
 
 require (
+	github.com/BurntSushi/toml v1.3.2
 	github.com/gofiber/fiber/v2 v2.50.0
 	github.com/google/uuid v1.3.1
 )

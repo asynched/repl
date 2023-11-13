@@ -1,8 +1,10 @@
 package main
 
 import (
+	"flag"
 	"log"
 
+	"github.com/asynched/repl/config"
 	"github.com/asynched/repl/managers"
 	"github.com/asynched/repl/server"
 	"github.com/gofiber/fiber/v2"
@@ -26,15 +28,41 @@ func init() {
 	log.SetPrefix("[repl] ")
 }
 
+var (
+	filename = flag.String("config", "config.toml", "path to config file")
+)
+
+const DEBUG bool = true
+
 func main() {
-	serverAddress := "127.0.0.1:9001"
+	flag.Parse()
+
+	if *filename == "" {
+		log.Fatal("Error: config file is required")
+	}
+
+	config, err := config.ParseConfig(*filename)
+
+	if err != nil {
+		log.Fatalf("Error parsing config file: %v\n", err)
+	}
 
 	log.Println("Initializing modules")
-
 	log.Println("Initializing topic manager")
-	topicManager := managers.NewTopicManager()
 
-	topicManager.CreateTopic("demo")
+	var topicManager managers.TopicManager
+
+	if !config.Cluster {
+		log.Println("Initializing server as standalone node")
+		topicManager = managers.NewStandaloneTopicManager()
+	} else {
+		log.Fatal("Error initializing server: raft replication is not implemented")
+	}
+
+	if DEBUG {
+		log.Println("Initializing 'demo' topic")
+		topicManager.CreateTopic("demo")
+	}
 
 	// HTTP server
 	log.Println("Initializing http server")
@@ -43,20 +71,14 @@ func main() {
 	})
 
 	healthController := server.NewHealthController()
-	app.Get("/health", healthController.GetHealth)
+	healthController.Setup(app.Group("/health"))
 
 	topicController := server.NewTopicController(topicManager)
-	app.Get("/topics", topicController.HandleGetTopics)
-	app.Post("/topics", topicController.HandleCreateTopic)
+	topicController.Setup(app.Group("/topics"))
 
-	app.Get("/topics/:topic/sse", topicController.HandleSSE)
-	app.Post("/topics/:topic", topicController.HandlePublishMessage)
-
-	// TODO: Remove this
 	app.Static("/", "./public")
 
-	log.Printf("Listening on address: http://%s\n", "127.0.0.1:9001")
-	log.Printf("Check health status at: http://%s/health\n", serverAddress)
-
-	log.Fatalf("Error starting server: %v", app.Listen(serverAddress))
+	log.Printf("Listening on address: http://%s\n", config.HttpAddr)
+	log.Printf("Check health status at: http://%s/health\n", config.HttpAddr)
+	log.Fatalf("Error starting server: %v\n", app.Listen(config.HttpAddr))
 }
