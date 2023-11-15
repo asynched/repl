@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"log"
 
 	"github.com/BurntSushi/toml"
 )
@@ -41,11 +42,29 @@ func (config *Config) Validate() error {
 }
 
 func ParseConfig(filename string) (*Config, error) {
+	if filename == "" {
+		log.Println("No config file provided")
+		log.Println("Using default settings")
+
+		return DefaultConfig(), nil
+	}
+
 	config := &Config{}
 
 	if _, err := toml.DecodeFile(filename, config); err != nil {
-		return nil, err
+		return config, err
 	}
 
 	return config, nil
+}
+
+func DefaultConfig() *Config {
+	return &Config{
+		Name:      "repl",
+		HttpAddr:  ":9090",
+		RaftAddr:  "",
+		Cluster:   false,
+		Bootstrap: false,
+		Peers:     []Peer{},
+	}
 }

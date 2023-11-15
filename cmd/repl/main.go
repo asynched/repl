@@ -31,20 +31,16 @@ func init() {
 }
 
 var (
-	filename = flag.String("config", "config.toml", "path to config file")
+	filename = flag.String("config", "", "path to config file")
 )
 
 func main() {
 	flag.Parse()
 
-	if *filename == "" {
-		log.Fatal("Error: config file is required")
-	}
-
-	config, err := config.ParseConfig(*filename)
+	cfg, err := config.ParseConfig(*filename)
 
 	if err != nil {
-		log.Fatalf("Error parsing config file: %v\n", err)
+		log.Fatalf("Error parsing config: %v\n", err)
 	}
 
 	log.Println("Initializing modules")
@@ -52,16 +48,16 @@ func main() {
 
 	var topicManager managers.TopicManager = managers.NewStandaloneTopicManager()
 
-	if config.Cluster {
+	if cfg.Cluster {
 		log.Println("Initializing server as a cluster")
 		log.Println("Initializing raft")
 		manager := managers.NewRaftTopicManager()
 
-		if config.Bootstrap {
+		if cfg.Bootstrap {
 			log.Println("Node is bootstrapping cluster")
 		}
 
-		raft, err := replication.GetRaft(config, manager)
+		raft, err := replication.GetRaft(cfg, manager)
 
 		if err != nil {
 			log.Fatalf("Error initializing raft: %v\n", err)
@@ -89,12 +85,12 @@ func main() {
 	topicController := server.NewTopicController(topicManager)
 	topicController.Setup(app.Group("/topics"))
 
-	log.Printf("HTTP server listening on address: http://%s\n", config.HttpAddr)
+	log.Printf("HTTP server listening on address: http://%s\n", cfg.HttpAddr)
 
-	if config.Cluster {
-		log.Printf("Raft server listening on address: %s\n", config.RaftAddr)
+	if cfg.Cluster {
+		log.Printf("Raft server listening on address: %s\n", cfg.RaftAddr)
 	}
 
-	log.Printf("Check health status at: http://%s/health\n", config.HttpAddr)
-	log.Fatalf("Error starting server: %v\n", app.Listen(config.HttpAddr))
+	log.Printf("Check health status at: http://%s/health\n", cfg.HttpAddr)
+	log.Fatalf("Error starting server: %v\n", app.Listen(cfg.HttpAddr))
 }
