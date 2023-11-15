@@ -42,7 +42,7 @@ func (topic *Topic) publish(message entities.Message) {
 func NewTopic(name string) *Topic {
 	return &Topic{
 		Name:      name,
-		Broadcast: channels.NewBroadcast[entities.Message](time.Second * 1),
+		Broadcast: channels.NewBroadcast[entities.Message](time.Millisecond * 250),
 	}
 }
 

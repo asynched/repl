@@ -12,14 +12,15 @@ import (
 type Broadcast[T any] struct {
 	lock      sync.RWMutex
 	timeout   time.Duration
-	listeners []chan T
+	listeners map[chan T]struct{}
 }
 
 // AddListener adds a listener to the broadcast channel.
 func (broadcast *Broadcast[T]) AddListener(listener chan T) {
 	broadcast.lock.Lock()
 	defer broadcast.lock.Unlock()
-	broadcast.listeners = append(broadcast.listeners, listener)
+
+	broadcast.listeners[listener] = struct{}{}
 }
 
 // RemoveListener removes a listener from the broadcast channel.
@@ -27,12 +28,8 @@ func (broadcast *Broadcast[T]) RemoveListener(listener chan T) {
 	broadcast.lock.Lock()
 	defer broadcast.lock.Unlock()
 
-	for index, l := range broadcast.listeners {
-		if l == listener {
-			broadcast.listeners = append(broadcast.listeners[:index], broadcast.listeners[index+1:]...)
-			return
-		}
-	}
+	delete(broadcast.listeners, listener)
+	close(listener)
 }
 
 // Broadcast sends a value to all listeners.
@@ -40,15 +37,15 @@ func (broadcast *Broadcast[T]) Broadcast(value T) {
 	broadcast.lock.RLock()
 	defer broadcast.lock.RUnlock()
 
-	for _, listener := range broadcast.listeners {
-		go func(listener chan T) {
-			select {
-			case listener <- value:
-				return
-			case <-time.After(broadcast.timeout):
-				return
-			}
-		}(listener)
+	timer := time.NewTimer(broadcast.timeout)
+
+	for listener := range broadcast.listeners {
+		select {
+		case listener <- value:
+		case <-timer.C:
+			timer.Reset(broadcast.timeout)
+			continue
+		}
 	}
 }
 
@@ -69,6 +66,6 @@ func (broadcast *Broadcast[T]) Broadcast(value T) {
 func NewBroadcast[T any](timeout time.Duration) *Broadcast[T] {
 	return &Broadcast[T]{
 		timeout:   timeout,
-		listeners: make([]chan T, 0),
+		listeners: make(map[chan T]struct{}),
 	}
 }
