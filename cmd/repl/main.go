@@ -9,6 +9,7 @@ import (
 	"github.com/asynched/repl/replication"
 	"github.com/asynched/repl/server"
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/cors"
 )
 
 func init() {
@@ -75,17 +76,18 @@ func main() {
 	}
 
 	log.Println("Initializing HTTP server")
+
 	app := fiber.New(fiber.Config{
 		DisableStartupMessage: true,
 	})
+
+	app.Use(cors.New())
 
 	healthController := server.NewHealthController()
 	healthController.Setup(app.Group("/health"))
 
 	topicController := server.NewTopicController(topicManager)
 	topicController.Setup(app.Group("/topics"))
-
-	app.Static("/", "./public")
 
 	log.Printf("HTTP server listening on address: http://%s\n", config.HttpAddr)
 

@@ -107,8 +107,6 @@ func (manager *StandaloneTopicManager) PublishMessage(topicName string, message 
 		return ErrTopicNotFound
 	}
 
-	message.FillMissingFields()
-
 	topic.publish(message)
 
 	return nil
@@ -220,8 +218,6 @@ func (manager *RaftTopicManager) PublishMessage(topicName string, message entiti
 	if !ok {
 		return ErrTopicNotFound
 	}
-
-	message.FillMissingFields()
 
 	cmd := &raftPublishMessageCommand{
 		Kind:    raftCommandKindPublishMessage,
