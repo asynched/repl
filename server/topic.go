@@ -127,11 +127,13 @@ func (controller *TopicController) HandleSSE(c *fiber.Ctx) error {
 
 		for {
 			select {
-			case message := <-channel:
-				data, _ := json.Marshal(message)
+			case messages := <-channel:
+				for _, message := range messages {
+					data, _ := json.Marshal(message)
 
-				if _, err := w.WriteString("data: " + string(data) + "\n\n"); err != nil {
-					return
+					if _, err := w.WriteString("data: " + string(data) + "\n\n"); err != nil {
+						return
+					}
 				}
 
 				if err := w.Flush(); err != nil {

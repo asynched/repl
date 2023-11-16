@@ -3,6 +3,8 @@ package main
 import (
 	"flag"
 	"log"
+	"runtime"
+	"time"
 
 	"github.com/asynched/repl/config"
 	"github.com/asynched/repl/managers"
@@ -90,6 +92,23 @@ func main() {
 	if cfg.Cluster {
 		log.Printf("Raft server listening on address: %s\n", cfg.RaftAddr)
 	}
+
+	go func() {
+		mem := runtime.MemStats{}
+
+		for {
+			routines := runtime.NumGoroutine()
+
+			runtime.ReadMemStats(&mem)
+
+			heap := mem.HeapAlloc / 1024 / 1024
+			alloc := mem.Alloc / 1024 / 1024
+			stack := mem.StackInuse / 1024 / 1024
+
+			log.Printf("event='stats' routines=%d heap=%d alloc=%d stack=%d\n", routines, heap, alloc, stack)
+			time.Sleep(1 * time.Second)
+		}
+	}()
 
 	log.Printf("Check health status at: http://%s/health\n", cfg.HttpAddr)
 	log.Fatalf("Error starting server: %v\n", app.Listen(cfg.HttpAddr))

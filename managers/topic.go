@@ -25,8 +25,8 @@ type TopicManager interface {
 	Exists(topicName string) bool
 	GetTopics() []string
 	PublishMessage(topicName string, message entities.Message) error
-	Subscribe(topicName string) (chan entities.Message, error)
-	Unsubscribe(topicName string, listener chan entities.Message)
+	Subscribe(topicName string) (chan []entities.Message, error)
+	Unsubscribe(topicName string, listener chan []entities.Message)
 }
 
 // Topic data structure that contains it's name and a channel for broadcasting messages.
@@ -43,7 +43,7 @@ func (topic *Topic) publish(message entities.Message) {
 func NewTopic(name string) *Topic {
 	broker := channels.NewBroker[entities.Message]()
 
-	go broker.Run(time.Millisecond * 10)
+	go broker.Run(time.Millisecond * 50)
 
 	return &Topic{
 		Name:   name,
@@ -120,7 +120,7 @@ func (manager *StandaloneTopicManager) PublishMessage(topicName string, message 
 
 // Subscribe subscribes to a topic.
 // Returns a channel that will receive messages from the topic or an error if the topic does not exist.
-func (manager *StandaloneTopicManager) Subscribe(topicName string) (chan entities.Message, error) {
+func (manager *StandaloneTopicManager) Subscribe(topicName string) (chan []entities.Message, error) {
 	manager.lock.RLock()
 	defer manager.lock.RUnlock()
 
@@ -136,7 +136,7 @@ func (manager *StandaloneTopicManager) Subscribe(topicName string) (chan entitie
 }
 
 // Unsubscribe unsubscribes from a topic.
-func (manager *StandaloneTopicManager) Unsubscribe(topicName string, listener chan entities.Message) {
+func (manager *StandaloneTopicManager) Unsubscribe(topicName string, listener chan []entities.Message) {
 	manager.lock.RLock()
 	defer manager.lock.RUnlock()
 
@@ -261,7 +261,7 @@ func (manager *RaftTopicManager) PublishMessage(topicName string, message entiti
 	return f.Error()
 }
 
-func (manager *RaftTopicManager) Subscribe(topicName string) (chan entities.Message, error) {
+func (manager *RaftTopicManager) Subscribe(topicName string) (chan []entities.Message, error) {
 	manager.lock.RLock()
 	defer manager.lock.RUnlock()
 
@@ -276,7 +276,7 @@ func (manager *RaftTopicManager) Subscribe(topicName string) (chan entities.Mess
 	return listener, nil
 }
 
-func (manager *RaftTopicManager) Unsubscribe(topicName string, listener chan entities.Message) {
+func (manager *RaftTopicManager) Unsubscribe(topicName string, listener chan []entities.Message) {
 	manager.lock.RLock()
 	defer manager.lock.RUnlock()
 

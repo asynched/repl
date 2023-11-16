@@ -75,7 +75,7 @@ func (q *queue[T]) dequeueN(n uint64) []T {
 // Broker is a channel that broadcasts a value to all listeners.
 type Broker[T any] struct {
 	lock     sync.RWMutex
-	channels map[chan T]struct{}
+	channels map[chan []T]struct{}
 	queue    *queue[T]
 }
 
@@ -85,18 +85,18 @@ type Broker[T any] struct {
 func NewBroker[T any]() *Broker[T] {
 	return &Broker[T]{
 		lock:     sync.RWMutex{},
-		channels: make(map[chan T]struct{}),
+		channels: make(map[chan []T]struct{}),
 		queue:    newQueue[T](),
 	}
 }
 
 // Subscribe adds a listener to the broker channel.
 // The listener channel will receive all values published to the broker.
-func (broker *Broker[T]) Subscribe() chan T {
+func (broker *Broker[T]) Subscribe() chan []T {
 	broker.lock.Lock()
 	defer broker.lock.Unlock()
 
-	channel := make(chan T)
+	channel := make(chan []T)
 
 	broker.channels[channel] = struct{}{}
 
@@ -104,7 +104,7 @@ func (broker *Broker[T]) Subscribe() chan T {
 }
 
 // Unsubscribe removes a listener from the broker channel.
-func (broker *Broker[T]) Remove(channel chan T) {
+func (broker *Broker[T]) Remove(channel chan []T) {
 	broker.lock.Lock()
 	defer broker.lock.Unlock()
 
@@ -151,19 +151,50 @@ func (broker *Broker[T]) Run(tick time.Duration) {
 
 	for {
 		broker.lock.Lock()
-		message := broker.queue.dequeue()
 
-		if message == nil {
-			broker.lock.Unlock()
-			continue
+		// log.Printf("event='tick' queue=%d\n", broker.queue.size)
+
+		// Send n messages if queue has it, from 1024, 512, 256, 128, 64 and one.
+		if broker.queue.size >= 1024 {
+			broker.sendMultiple(1024)
+		} else if broker.queue.size >= 512 {
+			broker.sendMultiple(512)
+		} else if broker.queue.size >= 256 {
+			broker.sendMultiple(256)
+		} else if broker.queue.size >= 128 {
+			broker.sendMultiple(128)
+		} else if broker.queue.size >= 64 {
+			broker.sendMultiple(64)
+		} else {
+			broker.sendOne()
 		}
 
-		for channel := range broker.channels {
-			channel <- *message
-		}
+		// log.Printf("event='tick_done' queue=%d\n", broker.queue.size)
 
 		broker.lock.Unlock()
 
 		time.Sleep(tick)
+	}
+}
+
+func (broker *Broker[T]) sendOne() {
+	message := broker.queue.dequeue()
+
+	if message == nil {
+		return
+	}
+
+	payload := []T{*message}
+
+	for channel := range broker.channels {
+		channel <- payload
+	}
+}
+
+func (broker *Broker[T]) sendMultiple(messageCount uint64) {
+	messages := broker.queue.dequeueN(messageCount)
+
+	for channel := range broker.channels {
+		channel <- messages
 	}
 }
