@@ -3,13 +3,21 @@ package server
 import (
 	"bufio"
 	"encoding/json"
-	"fmt"
 	"log"
 	"time"
 
 	"github.com/asynched/repl/domain/entities"
 	"github.com/asynched/repl/managers"
 	"github.com/gofiber/fiber/v2"
+)
+
+const (
+	eventConnected string = "event: connected\n\n"
+	eventPing      string = "event: ping\n\n"
+)
+
+const (
+	pingInterval time.Duration = 1 * time.Second
 )
 
 type TopicController struct {
@@ -66,7 +74,7 @@ func (controller *TopicController) HandlePublishMessage(c *fiber.Ctx) error {
 
 	message.FillMissingFields()
 
-	go controller.manager.PublishMessage(topicName, message)
+	controller.manager.PublishMessage(topicName, message)
 
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 		"message": "message published",
@@ -77,6 +85,7 @@ func (controller *TopicController) HandlePublishMessage(c *fiber.Ctx) error {
 func (controller *TopicController) HandleSSE(c *fiber.Ctx) error {
 	topicName := c.Params("topic")
 	clientAddress := c.Context().RemoteAddr()
+	done := c.Context().Done()
 
 	if !controller.manager.Exists(topicName) {
 		log.Printf("Failed to connect client '%s' to topic '%s': topic not found\n", clientAddress, topicName)
@@ -90,23 +99,22 @@ func (controller *TopicController) HandleSSE(c *fiber.Ctx) error {
 	c.Set("Cache-Control", "no-cache")
 	c.Set("Connection", "keep-alive")
 
-	log.Printf("'%s' has subscribed to topic '%s'\n", clientAddress, topicName)
+	log.Printf("event='connection' address='%s'\n", clientAddress)
 
 	c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
-		defer func() {
-			log.Printf("'%s' disconnected from topic '%s'\n", clientAddress, topicName)
-		}()
+		defer log.Printf("event='disconnection' address='%s'\n", clientAddress)
 
 		channel, err := controller.manager.Subscribe(topicName)
 
 		if err != nil {
-			log.Printf("Failed to connect client '%s' to topic '%s': %v\n", clientAddress, topicName, err)
+			log.Printf("event='err_could_not_connect' address='%s' error='%v'\n", clientAddress, err)
+			return
 		}
 
 		defer controller.manager.Unsubscribe(topicName, channel)
 
 		// Sends a connection event to the client
-		if _, err := fmt.Fprintf(w, "event: %s\n\n", "connected"); err != nil {
+		if _, err := w.WriteString(eventConnected); err != nil {
 			return
 		}
 
@@ -115,28 +123,37 @@ func (controller *TopicController) HandleSSE(c *fiber.Ctx) error {
 			return
 		}
 
+		timer := time.NewTimer(pingInterval)
+
 		for {
 			select {
 			case message := <-channel:
 				data, _ := json.Marshal(message)
 
-				if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
+				if _, err := w.WriteString("data: " + string(data) + "\n\n"); err != nil {
 					return
 				}
 
 				if err := w.Flush(); err != nil {
 					return
 				}
-			case <-time.After(5 * time.Second):
-				log.Printf("Sending ping event to '%s' (5s timeout)\n", clientAddress)
 
-				if _, err := fmt.Fprint(w, "event: ping\n\n"); err != nil {
+				timer.Reset(pingInterval)
+			case <-timer.C:
+				log.Printf("event='ping' client='%s', interval=%.0f\n", clientAddress, pingInterval.Seconds())
+
+				if _, err := w.WriteString(eventPing); err != nil {
 					return
 				}
 
 				if err := w.Flush(); err != nil {
 					return
 				}
+
+				timer.Reset(pingInterval)
+			case <-done:
+				log.Printf("event='sigdone' client='%s'\n", clientAddress)
+				return
 			}
 		}
 	})

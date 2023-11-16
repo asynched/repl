@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"log"
+	"os"
 	"sync"
 	"time"
 
@@ -30,25 +31,30 @@ type TopicManager interface {
 
 // Topic data structure that contains it's name and a channel for broadcasting messages.
 type Topic struct {
-	Name      string
-	Broadcast *channels.Broadcast[entities.Message]
+	Name   string
+	broker *channels.Broker[entities.Message]
 }
 
 // publish publishes a message to the topic.
 func (topic *Topic) publish(message entities.Message) {
-	topic.Broadcast.Broadcast(message)
+	topic.broker.Publish(message)
 }
 
 func NewTopic(name string) *Topic {
+	broker := channels.NewBroker[entities.Message]()
+
+	go broker.Run(time.Millisecond * 10)
+
 	return &Topic{
-		Name:      name,
-		Broadcast: channels.NewBroadcast[entities.Message](time.Millisecond * 250),
+		Name:   name,
+		broker: broker,
 	}
 }
 
 // StandaloneTopicManager is a manager for topics inside the application.
 type StandaloneTopicManager struct {
 	lock   sync.RWMutex
+	logger *log.Logger
 	topics map[string]*Topic
 }
 
@@ -124,9 +130,7 @@ func (manager *StandaloneTopicManager) Subscribe(topicName string) (chan entitie
 		return nil, ErrTopicNotFound
 	}
 
-	listener := make(chan entities.Message)
-
-	topic.Broadcast.AddListener(listener)
+	listener := topic.broker.Subscribe()
 
 	return listener, nil
 }
@@ -142,15 +146,36 @@ func (manager *StandaloneTopicManager) Unsubscribe(topicName string, listener ch
 		return
 	}
 
-	topic.Broadcast.RemoveListener(listener)
+	topic.broker.Remove(listener)
+}
+
+func (manager *StandaloneTopicManager) RunStats() {
+	for {
+		manager.lock.RLock()
+
+		for name, topic := range manager.topics {
+			manager.logger.Printf("event='stats' topic='%s' clients=%d messages=%d\n", name, topic.broker.ClientCount(), topic.broker.MessageCount())
+		}
+
+		manager.lock.RUnlock()
+
+		time.Sleep(5 * time.Second)
+	}
 }
 
 // NewStandaloneTopicManager creates a new topic manager.
 func NewStandaloneTopicManager() *StandaloneTopicManager {
-	return &StandaloneTopicManager{
+	logger := log.New(os.Stdout, "[manager] ", log.Flags())
+
+	manager := &StandaloneTopicManager{
 		lock:   sync.RWMutex{},
+		logger: logger,
 		topics: make(map[string]*Topic),
 	}
+
+	go manager.RunStats()
+
+	return manager
 }
 
 type RaftTopicManager struct {
@@ -246,9 +271,7 @@ func (manager *RaftTopicManager) Subscribe(topicName string) (chan entities.Mess
 		return nil, ErrTopicNotFound
 	}
 
-	listener := make(chan entities.Message)
-
-	topic.Broadcast.AddListener(listener)
+	listener := topic.broker.Subscribe()
 
 	return listener, nil
 }
@@ -263,7 +286,7 @@ func (manager *RaftTopicManager) Unsubscribe(topicName string, listener chan ent
 		return
 	}
 
-	topic.Broadcast.RemoveListener(listener)
+	topic.broker.Remove(listener)
 }
 
 type raftCommandKind int

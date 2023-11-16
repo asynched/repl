@@ -3,10 +3,6 @@ package main
 import (
 	"flag"
 	"log"
-	"os"
-	"os/signal"
-	"runtime/pprof"
-	"syscall"
 
 	"github.com/asynched/repl/config"
 	"github.com/asynched/repl/managers"
@@ -39,34 +35,6 @@ var (
 )
 
 func main() {
-	cpu, err := os.OpenFile("repl-cpu.prof", os.O_RDWR|os.O_CREATE, 0644)
-	if err != nil {
-		panic(err)
-	}
-	heap, err := os.OpenFile("repl-heap.prof", os.O_RDWR|os.O_CREATE, 0644)
-	if err != nil {
-		panic(err)
-	}
-
-	err = pprof.StartCPUProfile(cpu)
-	if err != nil {
-		panic(err)
-	}
-
-	c := make(chan os.Signal, 2)
-
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-
-	go func() {
-		for range c {
-			log.Println("Stopping profiler")
-			pprof.StopCPUProfile()
-			pprof.WriteHeapProfile(heap)
-			cpu.Close()
-			os.Exit(0)
-		}
-	}()
-
 	flag.Parse()
 
 	cfg, err := config.ParseConfig(*filename)
