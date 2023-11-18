@@ -3,7 +3,9 @@ package replication
 import (
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
+	"os"
 	"time"
 
 	"github.com/asynched/repl/config"
@@ -11,6 +13,7 @@ import (
 	boltdb "github.com/hashicorp/raft-boltdb"
 )
 
+// GetRaft returns a raft instance
 func GetRaft(config *config.Config, fsm raft.FSM) (*raft.Raft, error) {
 	raftConfig := raft.DefaultConfig()
 	raftConfig.LocalID = raft.ServerID(config.RaftAddr)
@@ -22,6 +25,18 @@ func GetRaft(config *config.Config, fsm raft.FSM) (*raft.Raft, error) {
 	transport, err := raft.NewTCPTransport(config.RaftAddr, nil, 3, 10*time.Second, nil)
 
 	if err != nil {
+		return nil, err
+	}
+
+	if err := createFolderIfNotExists("data"); err != nil {
+		return nil, err
+	}
+
+	if err := createFolderIfNotExists("data/logs"); err != nil {
+		return nil, err
+	}
+
+	if err := createFolderIfNotExists("data/stable"); err != nil {
 		return nil, err
 	}
 
@@ -76,4 +91,12 @@ func GetRaft(config *config.Config, fsm raft.FSM) (*raft.Raft, error) {
 	}
 
 	return r, nil
+}
+
+func createFolderIfNotExists(path string) error {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return os.MkdirAll(path, fs.ModePerm)
+	}
+
+	return nil
 }
