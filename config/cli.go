@@ -61,7 +61,7 @@ func ParseConfig(filename string) (*Config, error) {
 func DefaultConfig() *Config {
 	return &Config{
 		Name:      "repl",
-		HttpAddr:  "0.0.0.0:9090",
+		HttpAddr:  "0.0.0.0:9000",
 		RaftAddr:  "",
 		Cluster:   false,
 		Bootstrap: false,
