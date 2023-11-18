@@ -67,6 +67,12 @@ func (controller *TopicController) HandlePublishMessage(c *fiber.Ctx) error {
 		})
 	}
 
+	if !controller.manager.Exists(topicName) {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "topic not found",
+		})
+	}
+
 	message := entities.Message{
 		Value:   data.Value,
 		Headers: data.Headers,
@@ -136,14 +142,8 @@ func (controller *TopicController) HandleSSE(c *fiber.Ctx) error {
 					}
 				}
 
-				if err := w.Flush(); err != nil {
-					return
-				}
-
 				timer.Reset(pingInterval)
 			case <-timer.C:
-				log.Printf("event='ping' client='%s', interval=%.0f\n", clientAddress, pingInterval.Seconds())
-
 				if _, err := w.WriteString(eventPing); err != nil {
 					return
 				}
@@ -154,7 +154,7 @@ func (controller *TopicController) HandleSSE(c *fiber.Ctx) error {
 
 				timer.Reset(pingInterval)
 			case <-done:
-				log.Printf("event='sigdone' client='%s'\n", clientAddress)
+				log.Printf("event='done' client='%s'\n", clientAddress)
 				return
 			}
 		}
