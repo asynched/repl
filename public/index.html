@@ -23,20 +23,6 @@
   const list = document.querySelector('ul');
 
   async function main() {
-    const response = await fetch('/topics', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        name: 'demo',
-      })
-    })
-
-    if (response.status !== 201) {
-      console.error('Failed to create topic');
-    }
-
     initializeEventSource();
     sendMessages()
   }
@@ -56,6 +42,10 @@
 
     source.addEventListener('error', () => {
       status.textContent = 'DISCONNECTED';
+    })
+
+    source.addEventListener('ping', (event) => {
+      console.log(event.data)
     })
   }
 

@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/asynched/repl/channels"
-	"github.com/asynched/repl/domain/entities"
 	"github.com/hashicorp/raft"
 )
 
@@ -24,24 +23,24 @@ type TopicManager interface {
 	CreateTopic(name string) error
 	Exists(topicName string) bool
 	GetTopics() []string
-	PublishMessage(topicName string, message entities.Message) error
-	Subscribe(topicName string) (chan []entities.Message, error)
-	Unsubscribe(topicName string, listener chan []entities.Message)
+	PublishMessage(topicName string, message string) error
+	Subscribe(topicName string) (chan []string, error)
+	Unsubscribe(topicName string, listener chan []string)
 }
 
 // Topic data structure that contains it's name and a channel for broadcasting messages.
 type Topic struct {
 	Name   string
-	broker *channels.Broker[entities.Message]
+	broker *channels.Broker[string]
 }
 
 // publish publishes a message to the topic.
-func (topic *Topic) publish(message entities.Message) {
+func (topic *Topic) publish(message string) {
 	topic.broker.Publish(message)
 }
 
 func NewTopic(name string) *Topic {
-	broker := channels.NewBroker[entities.Message]()
+	broker := channels.NewBroker[string]()
 
 	go broker.Run(time.Millisecond * 100)
 
@@ -103,7 +102,7 @@ func (manager *StandaloneTopicManager) CreateTopic(name string) error {
 
 // PublishMessage publishes a message to a topic.
 // Returns an error if the topic does not exist.
-func (manager *StandaloneTopicManager) PublishMessage(topicName string, message entities.Message) error {
+func (manager *StandaloneTopicManager) PublishMessage(topicName string, message string) error {
 	manager.lock.RLock()
 	defer manager.lock.RUnlock()
 
@@ -120,7 +119,7 @@ func (manager *StandaloneTopicManager) PublishMessage(topicName string, message 
 
 // Subscribe subscribes to a topic.
 // Returns a channel that will receive messages from the topic or an error if the topic does not exist.
-func (manager *StandaloneTopicManager) Subscribe(topicName string) (chan []entities.Message, error) {
+func (manager *StandaloneTopicManager) Subscribe(topicName string) (chan []string, error) {
 	manager.lock.RLock()
 	defer manager.lock.RUnlock()
 
@@ -136,7 +135,7 @@ func (manager *StandaloneTopicManager) Subscribe(topicName string) (chan []entit
 }
 
 // Unsubscribe unsubscribes from a topic.
-func (manager *StandaloneTopicManager) Unsubscribe(topicName string, listener chan []entities.Message) {
+func (manager *StandaloneTopicManager) Unsubscribe(topicName string, listener chan []string) {
 	manager.lock.RLock()
 	defer manager.lock.RUnlock()
 
@@ -234,7 +233,7 @@ func (manager *RaftTopicManager) GetTopics() []string {
 	return names
 }
 
-func (manager *RaftTopicManager) PublishMessage(topicName string, message entities.Message) error {
+func (manager *RaftTopicManager) PublishMessage(topicName string, message string) error {
 	manager.lock.RLock()
 	defer manager.lock.RUnlock()
 
@@ -261,7 +260,7 @@ func (manager *RaftTopicManager) PublishMessage(topicName string, message entiti
 	return f.Error()
 }
 
-func (manager *RaftTopicManager) Subscribe(topicName string) (chan []entities.Message, error) {
+func (manager *RaftTopicManager) Subscribe(topicName string) (chan []string, error) {
 	manager.lock.RLock()
 	defer manager.lock.RUnlock()
 
@@ -276,7 +275,7 @@ func (manager *RaftTopicManager) Subscribe(topicName string) (chan []entities.Me
 	return listener, nil
 }
 
-func (manager *RaftTopicManager) Unsubscribe(topicName string, listener chan []entities.Message) {
+func (manager *RaftTopicManager) Unsubscribe(topicName string, listener chan []string) {
 	manager.lock.RLock()
 	defer manager.lock.RUnlock()
 
@@ -306,9 +305,9 @@ type raftCreateTopicCommand struct {
 }
 
 type raftPublishMessageCommand struct {
-	Kind    raftCommandKind  `json:"kind"`
-	Topic   string           `json:"topic"`
-	Message entities.Message `json:"message"`
+	Kind    raftCommandKind `json:"kind"`
+	Topic   string          `json:"topic"`
+	Message string          `json:"message"`
 }
 
 func (manager *RaftTopicManager) Apply(l *raft.Log) interface{} {

@@ -9,3 +9,5 @@ data/snapshots/*
 
 bin/*
 !bin/.gitkeep
+
+*.prof

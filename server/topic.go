@@ -17,7 +17,7 @@ const (
 )
 
 const (
-	pingInterval time.Duration = 1 * time.Second
+	pingInterval time.Duration = 5 * time.Second
 )
 
 type TopicController struct {
@@ -79,8 +79,9 @@ func (controller *TopicController) HandlePublishMessage(c *fiber.Ctx) error {
 	}
 
 	message.FillMissingFields()
+	sanitized, _ := json.Marshal(message)
 
-	controller.manager.PublishMessage(topicName, message)
+	controller.manager.PublishMessage(topicName, string(sanitized))
 
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 		"message": "message published",
@@ -135,11 +136,13 @@ func (controller *TopicController) HandleSSE(c *fiber.Ctx) error {
 			select {
 			case messages := <-channel:
 				for _, message := range messages {
-					data, _ := json.Marshal(message)
-
-					if _, err := w.WriteString("data: " + string(data) + "\n\n"); err != nil {
+					if _, err := w.WriteString("data: " + message + "\n\n"); err != nil {
 						return
 					}
+				}
+
+				if err := w.Flush(); err != nil {
+					return
 				}
 
 				timer.Reset(pingInterval)

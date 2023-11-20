@@ -4,7 +4,9 @@ import (
 	"flag"
 	"log"
 	"os"
+	"os/signal"
 	"runtime"
+	"runtime/pprof"
 	"time"
 
 	"github.com/asynched/repl/config"
@@ -44,6 +46,10 @@ func main() {
 
 	if err != nil {
 		log.Fatalf("Error parsing config: %v\n", err)
+	}
+
+	if err := profileApplication(); err != nil {
+		log.Fatalf("Error initializing profiler: %v\n", err)
 	}
 
 	log.Println("Application has started")
@@ -91,6 +97,8 @@ func main() {
 	topicController := server.NewTopicController(topicManager)
 	topicController.Setup(app.Group("/topics"))
 
+	app.Static("/", "./public")
+
 	log.Printf("HTTP server listening on address: http://%s\n", cfg.HttpAddr)
 
 	if cfg.Cluster {
@@ -117,4 +125,45 @@ func main() {
 
 	log.Printf("Check health status at: http://%s/health\n", cfg.HttpAddr)
 	log.Fatalf("Error starting server: %v\n", app.Listen(cfg.HttpAddr))
+}
+
+func profileApplication() error {
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+
+	cpu, err := os.OpenFile("cpu.prof", os.O_CREATE|os.O_RDWR, 0644)
+
+	if err != nil {
+		return err
+	}
+
+	heap, err := os.OpenFile("heap.prof", os.O_CREATE|os.O_RDWR, 0644)
+
+	if err != nil {
+		return err
+	}
+
+	if err := pprof.StartCPUProfile(cpu); err != nil {
+		return err
+	}
+
+	go func() {
+		<-c
+
+		pprof.StopCPUProfile()
+
+		if err := pprof.WriteHeapProfile(heap); err != nil {
+			log.Fatalf("Error writing heap profile: %v\n", err)
+		}
+
+		cpu.Close()
+		heap.Close()
+
+		log.Println("Profiling has stopped")
+		log.Println("Application has stopped")
+
+		os.Exit(0)
+	}()
+
+	return nil
 }
