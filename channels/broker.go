@@ -155,9 +155,7 @@ func (broker *Broker[T]) Run(tick time.Duration) {
 		// log.Printf("event='tick' queue=%d\n", broker.queue.size)
 
 		// Send n messages if queue has it, from 1024, 512, 256, 128, 64 and one.
-		if broker.queue.size >= 2048 {
-			broker.sendMultiple(2048)
-		} else if broker.queue.size >= 1024 {
+		if broker.queue.size >= 1024 {
 			broker.sendMultiple(1024)
 		} else if broker.queue.size >= 512 {
 			broker.sendMultiple(512)

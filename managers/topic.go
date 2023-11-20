@@ -43,7 +43,7 @@ func (topic *Topic) publish(message entities.Message) {
 func NewTopic(name string) *Topic {
 	broker := channels.NewBroker[entities.Message]()
 
-	go broker.Run(time.Millisecond * 50)
+	go broker.Run(time.Millisecond * 100)
 
 	return &Topic{
 		Name:   name,

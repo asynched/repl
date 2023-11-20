@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"log"
+	"os"
 	"runtime"
 	"time"
 
@@ -44,6 +45,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error parsing config: %v\n", err)
 	}
+
+	log.Println("Application has started")
+	log.Printf("Process id: %d\n", os.Getpid())
 
 	log.Println("Initializing modules")
 	log.Println("Initializing topic manager")
@@ -94,6 +98,7 @@ func main() {
 	}
 
 	go func() {
+		time.Sleep(5 * time.Second)
 		mem := runtime.MemStats{}
 
 		for {
@@ -105,8 +110,8 @@ func main() {
 			alloc := mem.Alloc / 1024 / 1024
 			stack := mem.StackInuse / 1024 / 1024
 
-			log.Printf("event='stats' routines=%d heap=%d alloc=%d stack=%d\n", routines, heap, alloc, stack)
-			time.Sleep(1 * time.Second)
+			log.Printf("type='stats' routines=%d heap=%d alloc=%d stack=%d\n", routines, heap, alloc, stack)
+			time.Sleep(5 * time.Second)
 		}
 	}()
 
